@@ -1,0 +1,40 @@
+name: build
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: current
+
+      - name: Find latest Fabric API for this Minecraft version
+        run: |
+          MC=$(grep '^minecraft_version=' gradle.properties | cut -d= -f2)
+          FAPI=$(curl -fsSL https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/maven-metadata.xml \
+            | grep -o "<version>[^<]*+${MC}</version>" \
+            | sed 's/<[^>]*>//g' | tail -1)
+          if [ -z "$FAPI" ]; then echo "Fabric API for $MC not found"; exit 1; fi
+          echo "Using Fabric API $FAPI"
+          echo "FAPI=$FAPI" >> "$GITHUB_ENV"
+
+      - name: Build
+        run: gradle build -Pfabric_api_version=$FAPI --stacktrace
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: soulmagic-mod
+          path: |
+            build/libs/*.jar
+            !build/libs/*-sources.jar
